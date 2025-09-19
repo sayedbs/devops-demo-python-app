@@ -1,0 +1,13 @@
+
+
+services:
+    app:
+        image: localhost:8083/devops/flasked:latest
+        ports:
+            - "5000:5000" # expose the Flask app directly
+        networks:
+            - app-network
+
+networks:
+    app-network:
+        driver: bridge
