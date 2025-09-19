@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME      = "flasked-app"
+        CONTAINER_NAME  = "flasked-app-container"
+        GIT_PROJECT_URL = "https://github.com/sayedbs/devops-demo-python-app.git"
+        GIT_CREDENTIALS = 'Github-cred-sayedbs'
+        PATH = "/usr/local/bin:${env.PATH}"
+
+        HARBOR_URL      = "localhost:8484"
+        HARBOR_PROJECT  = "devops"
+        HARBOR_USER     = "admin"
+        HARBOR_PASS     = "Harbor12345"
+    }
+stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
+                    url: "${GIT_PROJECT_URL}",
+                    credentialsId: "${GIT_CREDENTIALS}"
+            }
+        }
+
+        stage('Gitleaks Scan') {
+            steps {
+                script {
+                    sh """
+                        mkdir -p gitleaks-output
+                        docker run --rm \\
+                            -v \$(pwd):/path \\
+                            ghcr.io/gitleaks/gitleaks:latest detect \\
+                            --source="/path" \\
+                            --no-git \\
+                            --verbose \\
+                            --report-format json \\
+                            --report-path=/path/gitleaks-output/gitleaks-report.json \\
+                            --redact || exit 0
+                    """
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('MySonarQubeServer') {
+                    sh """
+                        ${tool 'SonarScanner'}/bin/sonar-scanner \
+                        -Dsonar.projectKey=flasked-app \
+                        -Dsonar.projectName='Flasked App' \
+                        -Dsonar.sources=.
+                    """
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker --version'
+                sh "docker build -t ${IMAGE_NAME}:latest ."
+            }
+        
+
+            post {
+                always {
+                    sh "docker rm -f ${CONTAINER_NAME} || true"
+                }
+            }
+        }
+
+        stage('Push to Harbor') {
+            steps {
+                script {
+                    sh """
+                        echo "${HARBOR_PASS}" | docker login ${HARBOR_URL} -u "${HARBOR_USER}" --password-stdin
+                        docker tag ${IMAGE_NAME}:latest ${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:latest
+                        docker push ${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:latest
+                        docker logout ${HARBOR_URL}
+                    """
+                }
+            }
+        }
+
+        stage('Approval Before Deploy') {
+            steps {
+                script {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        input message: "Approve deployment of Flasked app?",
+                              ok: "Deploy Now"
+                    }
+                }
+            }
+        }
+
+        stage('Docker Compose Deploy') {
+            steps {
+                script {
+                    sh """
+                        echo "${HARBOR_PASS}" | docker login ${HARBOR_URL} -u ${HARBOR_USER} --password-stdin
+                        cd ${env.WORKSPACE}
+
+                        # bring down any existing stack
+                        docker compose down --remove-orphans || true
+
+                        # pull updated images
+                        docker compose pull
+
+                        # start fresh containers
+                        docker compose up -d
+
+                        docker ps | grep flasked || true
+                        docker logout ${HARBOR_URL}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished."
+        }
+        success {
+            echo "✅ Flasked pipeline success!"
+        }
+        failure {
+            echo "❌ Flasked pipeline failed!"
+        }
+    }
+}
+ 
