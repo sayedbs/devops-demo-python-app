@@ -1,6 +1,6 @@
 services:
   app:
-    image: localhost:8484/devops/flasked:latest
+    image: localhost:8484/devops/flasked-app:latest
     expose:
       - "5000"
     networks:
