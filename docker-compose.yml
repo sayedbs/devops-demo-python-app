@@ -2,9 +2,9 @@
 
 services:
     app:
-        image: localhost:8484/devops/flasked:latest
+        image: localhost:8484/devops/flasked-app:latest
         ports:
-            - "5000:5000" # expose the Flask app directly
+            - "5000:5000"
         networks:
             - app-network
 
