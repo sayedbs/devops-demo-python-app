@@ -1,13 +1,7 @@
-
-
 services:
-    app:
-        image: localhost:8484/devops/flasked-app:latest
-        ports:
-            - "5000:5000"
-        networks:
-            - app-network
-
-networks:
-    app-network:
-        driver: bridge
+  app:
+    image: localhost:8484/devops/flasked:latest
+    expose:
+      - "5000"
+    networks:
+      - app-network
